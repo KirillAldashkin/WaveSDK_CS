@@ -1,7 +1,5 @@
 using Android.Content.PM;
 using Com.Htc.VR.Sdk;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using CC = Android.Content.PM.ConfigChanges;
 namespace VRGeomCS;
 
@@ -16,50 +14,8 @@ public class MainActivity : VRActivity
 {
     protected override void OnCreate(Bundle? savedInstanceState)
     {
-        unsafe
-        {
-            WVR.RegisterMain(&Main);
-        }
+        VRInitializer.Init();
         base.OnCreate(savedInstanceState);
     }
 
-    [UnmanagedCallersOnly(CallConvs = new Type[] { typeof(CallConvCdecl) })]
-    private static unsafe int Main(int argc, sbyte** args)
-    {
-        var vr = new VRApp();
-
-        if (!vr.InitVR())
-        {
-            vr.ShutdownVR();
-            return 1;
-        }
-
-        if (!vr.InitGL())
-        {
-            vr.ShutdownGL();
-            vr.ShutdownVR();
-            return 1;
-        }
-
-        try
-        {
-            while (true)
-            {
-                vr.HandleInput();
-                if (!vr.Running) break;
-                vr.RenderFrame();
-            }
-        }
-        catch (Exception e)
-        {
-            Console.WriteLine(e);
-        }
-        finally
-        {
-            vr.ShutdownGL();
-            vr.ShutdownVR();
-        }
-
-        return 0;
-    }
 }
