@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Android.Opengl;
+using System.Runtime.CompilerServices;
 
 namespace VRGeomCS;
 
@@ -7,7 +8,8 @@ public class VRApp
     public bool Running { get; set; } = false;
 
     private int width, height;
-    private WVR.TextureQueueHandle leftEye, rightEye;
+    private WVR.TextureQueueHandle leftEyeQ, rightEyeQ;
+    private List<FrameBufferObject> leftFBOs = new(), rightFBOs = new();
 
     #region Init & Shutdown
     internal bool InitVR()
@@ -19,11 +21,13 @@ public class VRApp
             return false;
         }
 
-        var renderInitErr = WVR.RenderInit(new()
+        var renderInitParams = new WVR.RenderInitParams()
         {
             GraphicsApi = WVR.GraphicsApiType.OpenGL,
             RenderConfig = WVR.RenderConfig.Default
-        });
+        };
+        System.Diagnostics.Debug.WriteLine(new string('\n', 60));
+        var renderInitErr = WVR.RenderInit(ref renderInitParams);
         if(renderInitErr != WVR.RenderError.None)
         {
             Console.WriteLine($"RenderInit error: {renderInitErr}");
@@ -62,47 +66,40 @@ public class VRApp
 
         return true;
     }
+
     internal bool InitGL()
     {
+        GLES20.GlEnable(GLES20.GlDepthTest);
+        GLES20.GlDepthFunc(GLES20.GlLequal);
+        GLES20.GlDepthMask(true);
+
         WVR.GetRenderTargetSize(out width, out height);
         if (width == 0 || height == 0) return false;
 
-        leftEye = WVR.ObtainTextureQueue(WVR.TextureTarget.D2D, WVR.TextureFormat.RGBA, WVR.TextureType.UnsignedByte, (uint)width, (uint)height, 0);
-        if(!ProcessEye(leftEye)) return false;
-        rightEye = WVR.ObtainTextureQueue(WVR.TextureTarget.D2D, WVR.TextureFormat.RGBA, WVR.TextureType.UnsignedByte, (uint)width, (uint)height, 0);
-        if(!ProcessEye(rightEye)) return false;
+        leftEyeQ = WVR.ObtainTextureQueue(WVR.TextureTarget.D2D, WVR.TextureFormat.RGBA, WVR.TextureType.UnsignedByte, (uint)width, (uint)height, 0);
+        rightEyeQ = WVR.ObtainTextureQueue(WVR.TextureTarget.D2D, WVR.TextureFormat.RGBA, WVR.TextureType.UnsignedByte, (uint)width, (uint)height, 0);
+        if (!ProcessEye(leftEyeQ, leftFBOs)) return false;
+        if (!ProcessEye(rightEyeQ, rightFBOs)) return false;
 
         return true;
 
-        bool ProcessEye(WVR.TextureQueueHandle eye)
+        bool ProcessEye(WVR.TextureQueueHandle eye, List<FrameBufferObject> to)
         {
             for (int i = 0; i < WVR.GetTextureQueueLength(eye); i++) {
-                /*
-                FrameBufferObject* fbo;
-
-                fbo = new FrameBufferObject((int)(long)WVR_GetTexture(mLeftEyeQ, i).id, mRenderWidth, mRenderHeight, true);
-                if (!fbo) return false;
-                if (fbo->hasError())  {
-                    delete fbo;
-                    return false;
-                }
-                mLeftEyeFBOMSAA.push_back(fbo);
-
-                fbo = new FrameBufferObject((int)(long)WVR_GetTexture(mLeftEyeQ, i).id, mRenderWidth, mRenderHeight);
-                if (!fbo) return false;
-                if (fbo->hasError())  {
-                    delete fbo;
-                    return false;
-                }
-                mLeftEyeFBO.push_back(fbo); 
-                */
+                var fbo = FrameBufferObject.TryCreate((uint)WVR.GetTexture(eye, i).Id, (uint)width, (uint)height);
+                if (fbo is null) return false;
+                to.Add(fbo); 
             }
             return true;
         }
     }
+
     internal void ShutdownGL()
     {
-        
+        foreach (var fbo in leftFBOs) fbo.Clear();
+        foreach (var fbo in rightFBOs) fbo.Clear();
+        WVR.ReleaseTextureQueue(leftEyeQ);
+        WVR.ReleaseTextureQueue(rightEyeQ);
     }
 
     internal void ShutdownVR() => WVR.Quit();
@@ -116,12 +113,39 @@ public class VRApp
 
     internal bool RenderFrame()
     {
+        Console.WriteLine(">>>>>> RenderFrame <<<<<<");
+        var indexLeft = WVR.GetAvailableTextureIndex(leftEyeQ);
+        var indexRight = WVR.GetAvailableTextureIndex(rightEyeQ);
+
+        var leftEyeTexture = WVR.GetTexture(leftEyeQ, indexLeft);
+        var rightEyeTexture = WVR.GetTexture(rightEyeQ, indexRight);
+
+        // Render left eye
+        var leftEyeFBO = leftFBOs[indexLeft];
+        leftEyeFBO.Bind();
+        leftEyeFBO.FullViewport();
+        WVR.PreRenderEye(WVR.Eye.Left, ref leftEyeTexture, ref Unsafe.NullRef<WVR.RenderFoveationParams>());
+        GL.ClearColor(1, 0, 0, 1);
+        GL.Clear(GL.BufferType.ColorBufferBit | GL.BufferType.DepthBufferBit);
+        leftEyeFBO.Unbind();
+
+        // Render right eye
+        var rightEyeFBO = rightFBOs[indexRight];
+        rightEyeFBO.Bind();
+        rightEyeFBO.FullViewport();
+        WVR.PreRenderEye(WVR.Eye.Right, ref rightEyeTexture, ref Unsafe.NullRef<WVR.RenderFoveationParams>());
+        GL.ClearColor(0, 0, 1, 1);
+        GL.Clear(GL.BufferType.ColorBufferBit | GL.BufferType.DepthBufferBit);
+        rightEyeFBO.Unbind();
+
+        // Submit left eye
+        var e = WVR.SubmitFrame(WVR.Eye.Left, ref leftEyeTexture, ref Unsafe.NullRef<WVR.PoseState>(), WVR.SubmitExtend.Default);
+        if (e != WVR.SubmitError.None) return false;
+
+        // Submit right eye
+        e = WVR.SubmitFrame(WVR.Eye.Right, ref rightEyeTexture, ref Unsafe.NullRef<WVR.PoseState>(), WVR.SubmitExtend.Default);
+        if (e != WVR.SubmitError.None) return false;
 
         return true;
-    }
-
-    internal void UpdateHMDMatrixPose()
-    {
-
     }
 }

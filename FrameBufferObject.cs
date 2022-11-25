@@ -2,60 +2,55 @@
 
 public class FrameBufferObject
 {
-    private bool mMSAA = false;
-    private int mWidth = 0;
-    private int mHeight = 0;
-    private float mScale = 1.0f;
-    private int mScaledWidth = 0;
-    private int mScaledHeight = 0;
-    private int mViewportX = 0;
-    private int mViewportY = 0;
-    private uint mViewportWidth = 0;
-    private uint mViewportHeight = 0;
-    private uint mRenderFrameBufferId = 0;
-    private uint mFrameBufferId = 0;
-    private uint mDepthBufferId = 0;
-    private uint mRenderTextureId = 0;
-    private uint mTextureId = 0;
-    private bool mHasError = false;
+    public uint Width { get; private set; }
+    public uint Height { get; private set; }
+    public uint TextureID { get; private set; }
+    public uint FrameBufferID { get; private set; }
+    public uint DepthBufferID { get; private set; }
 
-    public FrameBufferObject(int textureId, int width, int height, bool msaa = false);
 
-    public static FrameBufferObject? GetFBOInstance(int width, int height)
+    public void Clear()
     {
-        var fbo = new FrameBufferObject(0, width, height);
-        return fbo.mFrameBufferId == 0 ? null : fbo;
+        if (DepthBufferID != 0)
+        {
+            var id = DepthBufferID;
+            GL.DeleteRenderbuffers(1, ref id);
+        }
+        if (FrameBufferID != 0)
+        {
+            var id = FrameBufferID;
+            GL.DeleteFramebuffers(1, ref id);
+        }
+        DepthBufferID = FrameBufferID = TextureID = 0;
     }
 
-    public ~FrameBufferObject();
-    public void initMSAA();
-    public void init();
+    public void Bind() => GL.GlBindFramebuffer(GL.FramebufferTarget.Framebuffer, FrameBufferID);
 
-    public void bindTexture()
+    public void Unbind() => GL.GlBindFramebuffer(GL.FramebufferTarget.Framebuffer, 0);
+
+    public void FullViewport() => GL.Viewport(0, 0, Width, Height);
+
+    public static FrameBufferObject? TryCreate(uint textureId, uint width, uint height)
     {
-        glBindTexture(GL_TEXTURE_2D, mTextureId);
+        uint frameBufferID = 0;
+        GL.GenFramebuffers(1, ref frameBufferID);
+        GL.GlBindFramebuffer(GL.FramebufferTarget.Framebuffer, frameBufferID);
+
+        uint depthBufferID = 0;
+        GL.GenRenderbuffers(1, ref depthBufferID);
+        GL.BindRenderbuffer(GL.RenderbufferTarget.Renderbuffer, depthBufferID);
+        GL.RenderbufferStorage(GL.RenderbufferTarget.Renderbuffer, GL.SizedInternalFormat.DepthComponent24, width, height);
+        GL.FramebufferRenderbuffer(GL.FramebufferTarget.Framebuffer, GL.FramebufferAttachment.DepthAttachment, GL.RenderbufferTarget.Renderbuffer, depthBufferID);
+
+        GL.FramebufferTexture2D(GL.FramebufferTarget.Framebuffer, GLESBindings.FramebufferAttachment.ColorAttachment0, GLESBindings.TextureTarget.Texture2D, textureId, 0);
+
+        return new()
+        {
+            Width = width,
+            Height = height,
+            TextureID = textureId,
+            DepthBufferID = depthBufferID,
+            FrameBufferID = frameBufferID
+        };
     }
-
-    public void unbindTexture()
-    {
-        glBindTexture(GL_TEXTURE_2D, 0);
-    }
-
-    public void bindFrameBuffer();
-    public void unbindFrameBuffer();
-
-    public void glViewportFull()
-    {
-        glViewport(0, 0, mWidth, mHeight);
-    }
-
-    public uint TextureID => mTextureId;
-
-    public bool HasError => mHasError;
-
-    public void clear();
-
-    public void glViewportScale(std::vector<float> lowerLeft, std::vector<float> topRight);
-
-    public void resizeFrameBuffer(float scale);
-}
+} 

@@ -4,13 +4,7 @@ namespace VRGeomCS;
 
 public static class VRInitializer
 {
-    public static unsafe void Init()
-    {
-        unsafe
-        {
-            WVR.RegisterMain(&Main);
-        }
-    }
+    public static unsafe void Init() => WVR.RegisterMain(&Main);
 
 
     [UnmanagedCallersOnly(CallConvs = new Type[] { typeof(CallConvCdecl) })]
@@ -33,12 +27,12 @@ public static class VRInitializer
 
         try
         {
+            vr.Running = true;
             while (true)
             {
                 vr.HandleInput();
                 if (!vr.Running) break;
                 if (!vr.RenderFrame()) break;
-                vr.UpdateHMDMatrixPose();
             }
         }
         catch (Exception e)

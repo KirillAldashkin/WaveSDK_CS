@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace VRGeomCS;
@@ -15,7 +17,7 @@ public static unsafe class WVR
     public static extern void Quit();
 
     [DllImport("libwvr_api", EntryPoint = "WVR_RenderInit")]
-    public static extern RenderError RenderInit(in RenderInitParams param);
+    public static extern RenderError RenderInit(ref RenderInitParams param);
 
     [DllImport("libwvr_api", EntryPoint = "WVR_SetInputRequest")]
     public static extern bool SetInputRequest(DeviceType type, ref InputAttribute first, int size);
@@ -28,6 +30,24 @@ public static unsafe class WVR
 
     [DllImport("libwvr_api", EntryPoint = "WVR_GetTextureQueueLength")]
     public static extern uint GetTextureQueueLength(TextureQueueHandle handle);
+
+    [DllImport("libwvr_api", EntryPoint = "WVR_GetTexture")]
+    public static extern TextureParams GetTexture(TextureQueueHandle handle, int index);
+
+    [DllImport("libwvr_api", EntryPoint = "WVR_ReleaseTextureQueue")]
+    public static extern void ReleaseTextureQueue(TextureQueueHandle handle);
+
+    [DllImport("libwvr_api", EntryPoint = "WVR_GetAvailableTextureIndex")]
+    public static extern int GetAvailableTextureIndex(TextureQueueHandle handle);
+
+    [DllImport("libwvr_api", EntryPoint = "WVR_PreRenderEye")]
+    public static extern void PreRenderEye(Eye eye, ref TextureParams textureParam, ref RenderFoveationParams foveatedParam);
+
+    [DllImport("libwvr_api", EntryPoint = "WVR_SubmitFrame")]
+    public static extern SubmitError SubmitFrame(Eye eye, ref TextureParams param, ref PoseState pose, SubmitExtend extendMethod);
+
+    [DllImport("libwvr_api", EntryPoint = "WVR_RenderMask")]
+    public static extern void RenderMask(Eye eye, TextureTarget target = TextureTarget.D2D);
 
     public enum InitError
     {
@@ -188,8 +208,99 @@ public static unsafe class WVR
         UnsignedByte
     }
 
+    public enum Eye
+    {
+        Left = 0,
+        Right = 1,
+        Both = 2,
+    };
+
+    public enum PeripheralQuality
+    {
+        Low = 0x0000,
+        Medium = 0x0001,
+        High = 0x0002
+    }
+
+    public enum SubmitError
+    {
+        None = 0,
+        InvalidTexture = 400,
+        ThreadStop = 401,
+        BufferSubmitFailed = 402,
+        Max = 65535
+    }
+
+    public enum SubmitExtend
+    {
+        Default = 0x0000,
+        DisableDistortion = 0x0001,
+        PartialTexture = 0x0010,
+        SystemReserved1 = 1 << 30
+    }
+
+    public enum PoseOriginModel
+    {
+        OriginOnHead = 0,
+        OriginOnGround = 1,
+        OriginOnTrackingObserver = 2,
+        OriginOnHead_3DoF = 3
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 0)]
     public struct TextureQueueHandle
     {
         public IntPtr Handle;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 0)]
+    public struct TextureParams
+    {
+        public IntPtr Id;
+        public TextureTarget Target;
+        public TextureLayout Layout;
+        public IntPtr Depth;
+        private Matrix4x4* _projectionMatrix;
+
+        public ref Matrix4x4 ProjectionMatrix => ref Unsafe.AsRef<Matrix4x4>(_projectionMatrix);
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 0)]
+    public struct TextureLayout
+    {
+        public Vector2 LeftLow;
+        public Vector2 RightUp;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 0)]
+    public struct RenderFoveationParams
+    {
+        public float FocalX;
+        public float FocalY;
+        public float FovealFov;
+        public PeripheralQuality PeriQuality;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 0)]
+    public struct PoseState
+    {
+        public bool IsValid;
+        public Matrix4x4 PoseMatrix;
+        public Vector3 Velocity;
+        public Vector3 AngularVelocity;
+        public bool Is6DoFPose;
+        public long Timestamp;
+        public Vector3 Acceleration;
+        public Vector3 AngularAcceleration;
+        public float PredictedMilliSec;
+        public PoseOriginModel OriginModel;
+        public Pose Raw;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 0)]
+    public struct Pose
+    {
+        public Vector3 Position;
+        public Quaternion Rotation;
     }
 }
