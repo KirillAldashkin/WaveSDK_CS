@@ -26,7 +26,7 @@ public class VRApp
             GraphicsApi = WVR.GraphicsApiType.OpenGL,
             RenderConfig = WVR.RenderConfig.Default
         };
-        System.Diagnostics.Debug.WriteLine(new string('\n', 60));
+
         var renderInitErr = WVR.RenderInit(ref renderInitParams);
         if(renderInitErr != WVR.RenderError.None)
         {
@@ -69,9 +69,9 @@ public class VRApp
 
     internal bool InitGL()
     {
-        GLES20.GlEnable(GLES20.GlDepthTest);
-        GLES20.GlDepthFunc(GLES20.GlLequal);
-        GLES20.GlDepthMask(true);
+        GL.Enable(GL.EnableCap.DepthTest);
+        GL.DepthFunc(GL.DepthFunction.Less | GL.DepthFunction.Equal);
+        GL.DepthMask(true);
 
         WVR.GetRenderTargetSize(out width, out height);
         if (width == 0 || height == 0) return false;
@@ -80,12 +80,13 @@ public class VRApp
         rightEyeQ = WVR.ObtainTextureQueue(WVR.TextureTarget.D2D, WVR.TextureFormat.RGBA, WVR.TextureType.UnsignedByte, (uint)width, (uint)height, 0);
         if (!ProcessEye(leftEyeQ, leftFBOs)) return false;
         if (!ProcessEye(rightEyeQ, rightFBOs)) return false;
-
+        GL.ThrowIfError();
         return true;
 
         bool ProcessEye(WVR.TextureQueueHandle eye, List<FrameBufferObject> to)
         {
-            for (int i = 0; i < WVR.GetTextureQueueLength(eye); i++) {
+            var len = WVR.GetTextureQueueLength(eye);
+            for (int i = 0; i < len; i++) {
                 var fbo = FrameBufferObject.TryCreate((uint)WVR.GetTexture(eye, i).Id, (uint)width, (uint)height);
                 if (fbo is null) return false;
                 to.Add(fbo); 
@@ -110,42 +111,83 @@ public class VRApp
 
     }
 
+    int indexLeft, indexRight;
 
     internal bool RenderFrame()
     {
-        Console.WriteLine(">>>>>> RenderFrame <<<<<<");
-        var indexLeft = WVR.GetAvailableTextureIndex(leftEyeQ);
-        var indexRight = WVR.GetAvailableTextureIndex(rightEyeQ);
+        indexLeft = WVR.GetAvailableTextureIndex(leftEyeQ);
+        indexRight = WVR.GetAvailableTextureIndex(rightEyeQ);
 
-        var leftEyeTexture = WVR.GetTexture(leftEyeQ, indexLeft);
-        var rightEyeTexture = WVR.GetTexture(rightEyeQ, indexRight);
+        RenderStereoTargets();
+        GL.ThrowIfError();
 
-        // Render left eye
-        var leftEyeFBO = leftFBOs[indexLeft];
-        leftEyeFBO.Bind();
-        leftEyeFBO.FullViewport();
-        WVR.PreRenderEye(WVR.Eye.Left, ref leftEyeTexture, ref Unsafe.NullRef<WVR.RenderFoveationParams>());
-        GL.ClearColor(1, 0, 0, 1);
-        GL.Clear(GL.BufferType.ColorBufferBit | GL.BufferType.DepthBufferBit);
-        leftEyeFBO.Unbind();
+        // Left
+        var leftTexture = WVR.GetTexture(leftEyeQ, indexLeft);
+        leftTexture.Layout.LeftLow = new(0, 0);
+        leftTexture.Layout.RightUp = new(1, 1);
+        var leftErr = WVR.SubmitFrame(WVR.Eye.Left, ref leftTexture, ref Unsafe.NullRef<WVR.PoseState>(), WVR.SubmitExtend.Default);
+        if(leftErr != WVR.SubmitError.None) Console.WriteLine($"Left eye submit error: {leftErr}");
+        GL.ThrowIfError();
 
-        // Render right eye
-        var rightEyeFBO = rightFBOs[indexRight];
-        rightEyeFBO.Bind();
-        rightEyeFBO.FullViewport();
-        WVR.PreRenderEye(WVR.Eye.Right, ref rightEyeTexture, ref Unsafe.NullRef<WVR.RenderFoveationParams>());
-        GL.ClearColor(0, 0, 1, 1);
-        GL.Clear(GL.BufferType.ColorBufferBit | GL.BufferType.DepthBufferBit);
-        rightEyeFBO.Unbind();
+        // Right 
+        var rightTexture = WVR.GetTexture(rightEyeQ, indexRight);
+        rightTexture.Layout.LeftLow = new(0, 0);
+        rightTexture.Layout.RightUp = new(1, 1);
+        var rightErr = WVR.SubmitFrame(WVR.Eye.Right, ref rightTexture, ref Unsafe.NullRef<WVR.PoseState>(), WVR.SubmitExtend.Default);
+        if (rightErr != WVR.SubmitError.None) Console.WriteLine($"Right eye submit error: {rightErr}");
+        GL.ThrowIfError();
 
-        // Submit left eye
-        var e = WVR.SubmitFrame(WVR.Eye.Left, ref leftEyeTexture, ref Unsafe.NullRef<WVR.PoseState>(), WVR.SubmitExtend.Default);
-        if (e != WVR.SubmitError.None) return false;
-
-        // Submit right eye
-        e = WVR.SubmitFrame(WVR.Eye.Right, ref rightEyeTexture, ref Unsafe.NullRef<WVR.PoseState>(), WVR.SubmitExtend.Default);
-        if (e != WVR.SubmitError.None) return false;
+        // Finish
+        GL.ClearColor(0, 0, 0, 1);
+        GL.Clear(GLESBindings.BufferType.DepthBufferBit | GLESBindings.BufferType.ColorBufferBit);
+        GL.ThrowIfError();
+        Thread.Sleep(1);
 
         return true;
+    }
+
+    private void RenderStereoTargets()
+    {
+        var f = MathF.Sin(Environment.TickCount64 / 300f) * 0.5f + 0.5f;
+        GL.ClearColor(0.30f*f, 0.30f*f, 0.37f*f, 1);
+        FrameBufferObject fbo;
+
+        // Left
+        fbo = leftFBOs[indexLeft];
+        fbo.Bind();
+        GL.ThrowIfError();
+
+        var leftTexture = WVR.GetTexture(leftEyeQ, indexLeft);
+        fbo.FullViewport();
+        GL.ThrowIfError();
+        WVR.PreRenderEye(WVR.Eye.Left, ref leftTexture, ref Unsafe.NullRef<WVR.RenderFoveationParams>());
+        GL.Clear(GLESBindings.BufferType.DepthBufferBit | GLESBindings.BufferType.ColorBufferBit);
+        RenderScene(WVR.Eye.Left);
+        fbo.Unbind();
+        GL.ThrowIfError();
+
+        // Right
+        fbo = rightFBOs[indexRight];
+        fbo.Bind();
+        GL.ThrowIfError();
+
+        var rightTexture = WVR.GetTexture(rightEyeQ, indexRight);
+        fbo.FullViewport();
+        GL.ThrowIfError();
+        WVR.PreRenderEye(WVR.Eye.Right, ref rightTexture, ref Unsafe.NullRef<WVR.RenderFoveationParams>());
+        GL.Clear(GLESBindings.BufferType.DepthBufferBit | GLESBindings.BufferType.ColorBufferBit);
+        RenderScene(WVR.Eye.Right);
+        fbo.Unbind();
+        GL.ThrowIfError();
+    }
+
+    private void RenderScene(WVR.Eye eye)
+    {
+        WVR.RenderMask(eye);
+        if(eye == WVR.Eye.Left)
+            GL.ClearColor(1, 0, 0, 1);
+        else
+            GL.ClearColor(0, 0, 1, 1);
+        GL.Clear(GLESBindings.BufferType.DepthBufferBit | GLESBindings.BufferType.ColorBufferBit);
     }
 }

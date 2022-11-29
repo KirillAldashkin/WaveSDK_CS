@@ -26,7 +26,17 @@ public class FrameBufferObject
 
     public void Bind() => GL.GlBindFramebuffer(GL.FramebufferTarget.Framebuffer, FrameBufferID);
 
-    public void Unbind() => GL.GlBindFramebuffer(GL.FramebufferTarget.Framebuffer, 0);
+    public void Unbind()
+    {
+        Span<GL.FramebufferAttachment> data = stackalloc GL.FramebufferAttachment[]
+        {
+            GL.FramebufferAttachment.DepthAttachment, 
+            GL.FramebufferAttachment.StencilAttachment
+        };
+        GL.InvalidateFramebuffer(GL.FramebufferTarget.Framebuffer, 2, ref data[0]);
+
+        GL.GlBindFramebuffer(GL.FramebufferTarget.Framebuffer, 0);
+    }
 
     public void FullViewport() => GL.Viewport(0, 0, Width, Height);
 

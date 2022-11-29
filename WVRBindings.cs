@@ -247,13 +247,13 @@ public static unsafe class WVR
         OriginOnHead_3DoF = 3
     }
 
-    [StructLayout(LayoutKind.Sequential, Pack = 0)]
+    [StructLayout(LayoutKind.Sequential)]
     public struct TextureQueueHandle
     {
         public IntPtr Handle;
     }
 
-    [StructLayout(LayoutKind.Sequential, Pack = 0)]
+    [StructLayout(LayoutKind.Sequential)]
     public struct TextureParams
     {
         public IntPtr Id;
@@ -265,14 +265,14 @@ public static unsafe class WVR
         public ref Matrix4x4 ProjectionMatrix => ref Unsafe.AsRef<Matrix4x4>(_projectionMatrix);
     }
 
-    [StructLayout(LayoutKind.Sequential, Pack = 0)]
+    [StructLayout(LayoutKind.Sequential)]
     public struct TextureLayout
     {
         public Vector2 LeftLow;
         public Vector2 RightUp;
     }
 
-    [StructLayout(LayoutKind.Sequential, Pack = 0)]
+    [StructLayout(LayoutKind.Sequential)]
     public struct RenderFoveationParams
     {
         public float FocalX;
@@ -281,7 +281,7 @@ public static unsafe class WVR
         public PeripheralQuality PeriQuality;
     }
 
-    [StructLayout(LayoutKind.Sequential, Pack = 0)]
+    [StructLayout(LayoutKind.Sequential)]
     public struct PoseState
     {
         public bool IsValid;
@@ -297,7 +297,7 @@ public static unsafe class WVR
         public Pose Raw;
     }
 
-    [StructLayout(LayoutKind.Sequential, Pack = 0)]
+    [StructLayout(LayoutKind.Sequential)]
     public struct Pose
     {
         public Vector3 Position;
